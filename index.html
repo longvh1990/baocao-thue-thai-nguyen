@@ -94,13 +94,13 @@
 // ====================== CẤU HÌNH SUPABASE ======================
 const SUPABASE_URL = 'https://bsyqklmoorafermypoyj.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJzeXFrbG1vb3JhZmVybXlwb3lqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNzQ1NzMsImV4cCI6MjA4ODg1MDU3M30.wm6P171WQnaIMKB1FJEh1OPeDc75cI3VHuk-ASDRooo';
-const supabase = Supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let isAdmin = false;
 let currentDateKey = "";
 let treeData = [];
 
-// ====================== DỮ LIỆU MẪU BAN ĐẦU ======================
+// ====================== DỮ LIỆU MẪU BAN ĐẦU (đầy đủ) ======================
 function resetTreeData() {
     treeData = [
         { id:"A", tt:"A", chi_tieu:"Tổng thu toàn tỉnh (I+II+III)", level:0, parent:null, govt:26545000, prov:26560000, actual:5998273, expanded:true },
@@ -141,7 +141,7 @@ function formatDateVN(key) {
     return `${d}/${m}/${y}`;
 }
 
-// ====================== ADMIN AUTH (Supabase) ======================
+// ====================== ADMIN AUTH ======================
 async function loginAdmin() {
     const email = document.getElementById("adminEmail").value.trim();
     const password = document.getElementById("adminPass").value.trim();
@@ -151,7 +151,8 @@ async function loginAdmin() {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-        alert("Đăng nhập thất bại: " + error.message);
+        alert("Đăng nhập thất bại: " + (error.message || "Kiểm tra kết nối mạng hoặc tài khoản"));
+        console.error(error);
         return;
     }
 
@@ -178,7 +179,7 @@ async function checkAdminSession() {
     }
 }
 
-// ====================== ENABLE/DISABLE EDIT MODE ======================
+// ====================== ENABLE/DISABLE EDIT ======================
 function enableEditMode() {
     document.querySelectorAll(".contenteditable").forEach(td => td.contentEditable = true);
     document.getElementById("btnImport").disabled = false;
@@ -189,7 +190,7 @@ function disableEditMode() {
     document.getElementById("btnImport").disabled = true;
 }
 
-// ====================== LƯU / TẢI DỮ LIỆU TỪ SUPABASE ======================
+// ====================== SUPABASE SAVE/LOAD ======================
 async function saveCurrentData() {
     if (!isAdmin || !currentDateKey) return;
 
@@ -201,7 +202,7 @@ async function saveCurrentData() {
             updated_at: new Date().toISOString()
         }, { onConflict: 'date_key' });
 
-    if (error) console.error("Lỗi lưu Supabase:", error);
+    if (error) console.error("Lỗi lưu:", error);
 }
 
 async function loadDataByDate(dateKey) {
@@ -232,15 +233,20 @@ async function loadHistoryDates() {
         .select('date_key')
         .order('date_key', { ascending: false });
 
+    const sel = document.getElementById("historyDate");
+    sel.innerHTML = "";
+
     if (error || !data || data.length === 0) {
         const defDate = getYesterdayKey();
-        document.getElementById("historyDate").innerHTML = `<option value="${defDate}" selected>Tính đến ngày ${formatDateVN(defDate)}</option>`;
+        const opt = document.createElement("option");
+        opt.value = defDate;
+        opt.text = `Tính đến ngày ${formatDateVN(defDate)} (mẫu)`;
+        opt.selected = true;
+        sel.appendChild(opt);
         loadDataByDate(defDate);
         return;
     }
 
-    const sel = document.getElementById("historyDate");
-    sel.innerHTML = "";
     data.forEach(row => {
         const opt = document.createElement("option");
         opt.value = row.date_key;
@@ -252,12 +258,13 @@ async function loadHistoryDates() {
     loadDataByDate(data[0].date_key);
 }
 
-// ====================== RENDER & IMPORT & EXPORT ======================
+// ====================== RENDER TABLE ======================
 function renderTable() {
     const tbody = document.querySelector("#dataTable tbody");
     tbody.innerHTML = "";
     treeData.filter(r => !r.parent).forEach(node => renderNode(node, tbody, 0));
 }
+
 function renderNode(node, tbody, depth) {
     const tr = document.createElement("tr");
     tr.className = `level-${node.level}`;
@@ -303,20 +310,18 @@ function createCell(val, field, node) {
     if (isAdmin) {
         td.contentEditable = true;
         td.onblur = function() {
-			let raw = this.textContent.replace(/[^0-9.-]/g, "");
-			node[field] = parseFloat(raw) || 0;
-			if (field === "actual" && isAdmin) {
-        saveCurrentData();  
-    }
-    renderTable();
-};
+            let raw = this.textContent.replace(/[^0-9.-]/g, "");
+            node[field] = parseFloat(raw) || 0;
+            if (field === "actual") saveCurrentData();
+            renderTable();
+        };
     }
     return td;
 }
-// ====================== IMPORT EXCEL ======================
+
+// ====================== IMPORT & EXPORT ======================
 function handleImport(e) {
     if (!isAdmin) return alert("Chỉ Admin mới được import!");
-  
     const file = e.target.files[0];
     if (!file) return;
 
@@ -332,7 +337,7 @@ function handleImport(e) {
             let notFound = [];
 
             json.forEach((row, idx) => {
-                if (idx < 5) return; // bỏ header
+                if (idx < 5) return;
                 if (!row[1]) return;
 
                 let name = (row[1] || "").toString().trim().replace(/\s+/g, " ");
@@ -370,7 +375,7 @@ function handleImport(e) {
     };
     reader.readAsArrayBuffer(file);
 }
-// ====================== EXPORT EXCEL (giữ nguyên) ======================
+
 function exportToExcel() {
     const rows = [["TT","Chỉ tiêu","Dự toán CP","Dự toán tỉnh","Thực hiện","% CP","% tỉnh"]];
     function addRow(node, depth=0) {
