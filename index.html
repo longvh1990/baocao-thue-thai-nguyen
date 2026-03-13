@@ -171,6 +171,82 @@ async function checkAdminSession() {
         enableEditMode();
     }
 }
+    
+// ====================== LỊCH SỬ DỮ LIỆU ======================
+async function saveCurrentData() {
+    if (!isAdmin) return alert("Chỉ admin mới lưu được!");
+
+    const { error } = await supabase
+        .from('reports')
+        .upsert({
+            date_key: currentDateKey,
+            data_json: treeData,  // toàn bộ array/object treeData
+            updated_at: new Date().toISOString()
+        }, { onConflict: 'date_key' });
+
+    if (error) {
+        alert("Lỗi lưu: " + error.message);
+    } else {
+        alert(`Đã lưu dữ liệu ngày ${formatDateVN(currentDateKey)} lên Supabase!`);
+    }
+}
+
+async function loadDataByDate(dateKey) {
+    if (!dateKey) dateKey = getYesterdayKey(); // fallback
+
+    currentDateKey = dateKey;
+
+    const { data, error } = await supabase
+        .from('reports')
+        .select('data_json')
+        .eq('date_key', dateKey)
+        .maybeSingle();  // single hoặc null nếu chưa có
+
+    if (error) {
+        console.error("Lỗi load từ Supabase:", error);
+    }
+
+    if (data && data.data_json) {
+        treeData = data.data_json;
+    } else {
+        resetTreeData(); // fallback dữ liệu mẫu
+    }
+
+    document.getElementById("report-date").textContent = formatDateVN(dateKey);
+    renderTable();
+}
+
+function loadHistoryDates() {
+    const dates = [];
+    for (let i=0; i<localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k.startsWith("baocao_thainguyen_")) dates.push(k.replace("baocao_thainguyen_",""));
+    }
+    dates.sort().reverse();
+
+    const sel = document.getElementById("historyDate");
+    sel.innerHTML = "";
+
+    if (dates.length === 0) {
+        const defDate = getYesterdayKey();
+        const opt = document.createElement("option");
+        opt.value = defDate;
+        opt.text = `Tính đến ngày ${formatDateVN(defDate)}`;
+        opt.selected = true;
+        sel.appendChild(opt);
+        loadDataByDate(defDate);
+    } else {
+        dates.forEach(d => {
+            const opt = document.createElement("option");
+            opt.value = d;
+            opt.text = `Tính đến ngày ${formatDateVN(d)}`;
+            sel.appendChild(opt);
+        });
+        const latest = dates[0];
+        sel.value = latest;
+        loadDataByDate(latest);
+    }
+}
 
 // ====================== ENABLE/DISABLE EDIT ======================
 function enableEditMode() {
@@ -271,3 +347,4 @@ window.onload = async function() {
 </script>
 </body>
 </html>
+
