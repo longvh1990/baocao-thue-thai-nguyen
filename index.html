@@ -171,12 +171,74 @@ async function checkAdminSession() {
         enableEditMode();
     }
 }
-    
+    // ====================== RENDER ======================
+function renderTable() {
+    const tbody = document.querySelector("#dataTable tbody");
+    tbody.innerHTML = "";
+    treeData.filter(r => !r.parent).forEach(node => renderNode(node, tbody, 0));
+}
+
+function renderNode(node, tbody, depth) {
+    const tr = document.createElement("tr");
+    tr.className = `level-${node.level}`;
+
+    const tdTT = document.createElement("td"); tdTT.textContent = node.tt || ""; tr.appendChild(tdTT);
+
+    const tdChi = document.createElement("td");
+    tdChi.style.paddingLeft = `${depth*30 + 15}px`;
+    const hasChild = treeData.some(r => r.parent === node.id);
+    if (hasChild) {
+        tdChi.innerHTML = `<strong>${node.chi_tieu}</strong> ${node.expanded ? '▼' : '▶'}`;
+        tdChi.style.cursor = "pointer";
+        tdChi.onclick = () => { node.expanded = !node.expanded; renderTable(); };
+    } else {
+        tdChi.textContent = node.chi_tieu;
+    }
+    tr.appendChild(tdChi);
+
+    tr.appendChild(createCell(node.govt, "govt", node));
+    tr.appendChild(createCell(node.prov, "prov", node));
+    tr.appendChild(createCell(node.actual, "actual", node));
+
+    const tdCP = document.createElement("td"); tdCP.className="percent";
+    tdCP.textContent = node.govt ? (node.actual / node.govt * 100).toFixed(1) + "%" : "—";
+    tr.appendChild(tdCP);
+
+    const tdProv = document.createElement("td"); tdProv.className="percent";
+    tdProv.textContent = node.prov ? (node.actual / node.prov * 100).toFixed(1) + "%" : "—";
+    tr.appendChild(tdProv);
+
+    tbody.appendChild(tr);
+
+    if (node.expanded) {
+        treeData.filter(r => r.parent === node.id).forEach(c => renderNode(c, tbody, depth+1));
+    }
+}
+
+function createCell(val, field, node) {
+    const td = document.createElement("td");
+    td.textContent = val.toLocaleString("vi-VN");
+    td.className = "contenteditable";
+
+    if (isAdmin) {
+        td.contentEditable = true;
+        td.onblur = function() {
+			let raw = this.textContent.replace(/[^0-9.-]/g, "");
+			node[field] = parseFloat(raw) || 0;
+			if (field === "actual" && isAdmin) {
+        saveCurrentData();  // tự động lưu khi sửa actual
+    }
+    renderTable();
+};
+    }
+    return td;
+}
+
 // ====================== LỊCH SỬ DỮ LIỆU ======================
 async function saveCurrentData() {
     if (!isAdmin) return alert("Chỉ admin mới lưu được!");
 
-    const { error } = await supabase
+    const { error } = await supabaseClient
         .from('reports')
         .upsert({
             date_key: currentDateKey,
@@ -187,7 +249,7 @@ async function saveCurrentData() {
     if (error) {
         alert("Lỗi lưu: " + error.message);
     } else {
-        alert(`Đã lưu dữ liệu ngày ${formatDateVN(currentDateKey)} lên Supabase!`);
+        alert(`Đã lưu dữ liệu ngày ${formatDateVN(currentDateKey)}!`);
     }
 }
 
@@ -196,7 +258,7 @@ async function loadDataByDate(dateKey) {
 
     currentDateKey = dateKey;
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
         .from('reports')
         .select('data_json')
         .eq('date_key', dateKey)
@@ -347,4 +409,5 @@ window.onload = async function() {
 </script>
 </body>
 </html>
+
 
