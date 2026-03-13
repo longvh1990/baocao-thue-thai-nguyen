@@ -85,8 +85,7 @@
 
     <div class="note">
         <strong>Hướng dẫn sử dụng:</strong><br>
-        • Đăng nhập bằng tài khoản Supabase để cập nhật dữ liệu.<br>
-        • Dữ liệu được lưu trên Supabase → không mất khi reload/deploy.
+        • Đăng nhập bằng tài khoản admin để cập nhật dữ liệu.<br>
     </div>
 </div>
 
@@ -94,7 +93,9 @@
 // ====================== CẤU HÌNH SUPABASE ======================
 const SUPABASE_URL = 'https://bsyqklmoorafermypoyj.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJzeXFrbG1vb3JhZmVybXlwb3lqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNzQ1NzMsImV4cCI6MjA4ODg1MDU3M30.wm6P171WQnaIMKB1FJEh1OPeDc75cI3VHuk-ASDRooo';
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Sửa lỗi: dùng supabase.createClient (chữ thường)
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let isAdmin = false;
 let currentDateKey = "";
@@ -129,17 +130,8 @@ function resetTreeData() {
 }
 
 // ====================== NGÀY & ĐỊNH DẠNG ======================
-function getYesterdayKey() {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return d.toISOString().slice(0,10);
-}
-
-function formatDateVN(key) {
-    if (!key) return "";
-    const [y, m, d] = key.split('-');
-    return `${d}/${m}/${y}`;
-}
+function getYesterdayKey() { const d = new Date(); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10); }
+function formatDateVN(key) { if(!key) return ""; const [y,m,d] = key.split('-'); return `${d}/${m}/${y}`; }
 
 // ====================== ADMIN AUTH ======================
 async function loginAdmin() {
@@ -148,10 +140,10 @@ async function loginAdmin() {
 
     if (!email || !password) return alert("Vui lòng nhập email và mật khẩu!");
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
 
     if (error) {
-        alert("Đăng nhập thất bại: " + (error.message || "Kiểm tra kết nối mạng hoặc tài khoản"));
+        alert("Đăng nhập thất bại: " + (error.message || "Kiểm tra kết nối hoặc tài khoản"));
         console.error(error);
         return;
     }
@@ -163,7 +155,7 @@ async function loginAdmin() {
 }
 
 async function logoutAdmin() {
-    await supabase.auth.signOut();
+    await supabaseClient.auth.signOut();
     isAdmin = false;
     document.getElementById("adminStatus").innerHTML = "";
     disableEditMode();
@@ -171,7 +163,7 @@ async function logoutAdmin() {
 }
 
 async function checkAdminSession() {
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session } } = await supabaseClient.auth.getSession();
     if (session) {
         isAdmin = true;
         document.getElementById("adminStatus").innerHTML = `<span style="color:#15803d;">✓ Admin: ${session.user.email} (tự động)</span>`;
@@ -194,7 +186,7 @@ function disableEditMode() {
 async function saveCurrentData() {
     if (!isAdmin || !currentDateKey) return;
 
-    const { error } = await supabase
+    const { error } = await supabaseClient
         .from('reports')
         .upsert({
             date_key: currentDateKey,
@@ -209,7 +201,7 @@ async function loadDataByDate(dateKey) {
     if (!dateKey) dateKey = getYesterdayKey();
     currentDateKey = dateKey;
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
         .from('reports')
         .select('data_json')
         .eq('date_key', dateKey)
@@ -228,7 +220,7 @@ async function loadDataByDate(dateKey) {
 }
 
 async function loadHistoryDates() {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
         .from('reports')
         .select('date_key')
         .order('date_key', { ascending: false });
@@ -254,8 +246,10 @@ async function loadHistoryDates() {
         sel.appendChild(opt);
     });
 
-    sel.value = data[0].date_key;
-    loadDataByDate(data[0].date_key);
+    if (data.length > 0) {
+        sel.value = data[0].date_key;
+        loadDataByDate(data[0].date_key);
+    }
 }
 
 // ====================== RENDER TABLE ======================
