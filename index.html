@@ -16,9 +16,7 @@
         .controls { padding:16px 32px; background:#fff; border-bottom:1px solid #e2e8f0; display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
         button { padding:10px 20px; font-size:14px; font-weight:500; border:none; border-radius:6px; cursor:pointer; transition:0.2s; }
         .btn-primary { background:#3b82f6; color:white; }
-        .btn-primary:hover { background:#2563eb; }
         .btn-success { background:#10b981; color:white; }
-        .btn-success:hover { background:#059669; }
         .btn-danger { background:#ef4444; color:white; }
         table { width:100%; border-collapse:collapse; font-size:14px; }
         th, td { padding:12px 14px; border:1px solid #e2e8f0; text-align:right; vertical-align:middle; }
@@ -87,7 +85,7 @@
     <div class="note">
         <strong>Hướng dẫn sử dụng:</strong><br>
         • Chỉnh sửa hoặc Import → thay đổi tạm thời trên bảng.<br>
-        • Nhấn nút <strong>💾 Lưu lại</strong> để lưu vĩnh viễn vào Supabase.<br>
+        • Nhấn <strong>💾 Lưu lại</strong> để lưu vĩnh viễn vào Supabase.<br>
         • Reload trang sẽ lấy dữ liệu mới nhất từ Supabase.
     </div>
 </div>
@@ -96,13 +94,13 @@
 // ====================== CẤU HÌNH SUPABASE ======================
 const SUPABASE_URL = 'https://bsyqklmoorafermypoyj.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJzeXFrbG1vb3JhZmVybXlwb3lqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNzQ1NzMsImV4cCI6MjA4ODg1MDU3M30.wm6P171WQnaIMKB1FJEh1OPeDc75cI3VHuk-ASDRooo';
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);  // sửa đúng cú pháp
 
 let isAdmin = false;
 let currentDateKey = "";
 let treeData = [];
 
-// ====================== DỮ LIỆU MẪU BAN ĐẦU ======================
+// ====================== DỮ LIỆU MẪU ======================
 function resetTreeData() {
     treeData = [
         { id:"A", tt:"A", chi_tieu:"Tổng thu toàn tỉnh (I+II+III)", level:0, parent:null, govt:26545000, prov:26560000, actual:5998273, expanded:true },
@@ -131,17 +129,8 @@ function resetTreeData() {
 }
 
 // ====================== NGÀY & ĐỊNH DẠNG ======================
-function getYesterdayKey() {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return d.toISOString().slice(0,10);
-}
-
-function formatDateVN(key) {
-    if (!key) return "";
-    const [y, m, d] = key.split('-');
-    return `${d}/${m}/${y}`;
-}
+function getYesterdayKey() { const d = new Date(); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10); }
+function formatDateVN(key) { if(!key) return ""; const [y,m,d]=key.split('-'); return `${d}/${m}/${y}`; }
 
 // ====================== ADMIN AUTH ======================
 async function loginAdmin() {
@@ -153,7 +142,7 @@ async function loginAdmin() {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-        alert("Đăng nhập thất bại: " + (error.message || "Kiểm tra kết nối mạng hoặc tài khoản"));
+        alert("Đăng nhập thất bại: " + error.message);
         console.error(error);
         return;
     }
@@ -194,10 +183,7 @@ function disableEditMode() {
 
 // ====================== LƯU THỦ CÔNG ======================
 async function saveToSupabase() {
-    if (!isAdmin || !currentDateKey) {
-        alert("Chưa đăng nhập Admin hoặc chưa chọn ngày báo cáo!");
-        return;
-    }
+    if (!isAdmin || !currentDateKey) return alert("Chưa đăng nhập Admin hoặc chưa chọn ngày!");
 
     const { error } = await supabase
         .from('reports')
@@ -211,7 +197,7 @@ async function saveToSupabase() {
         alert("Lưu thất bại: " + error.message);
         console.error("Lỗi lưu:", error);
     } else {
-        alert(`✅ Đã lưu thành công dữ liệu ngày ${formatDateVN(currentDateKey)} vào Supabase!`);
+        alert(`✅ Đã lưu thành công dữ liệu ngày ${formatDateVN(currentDateKey)}!`);
     }
 }
 
@@ -325,7 +311,7 @@ function createCell(val, field, node) {
         td.onblur = function() {
             let raw = this.textContent.replace(/[^0-9.-]/g, "");
             node[field] = parseFloat(raw) || 0;
-            renderTable(); // chỉ cập nhật bảng, không lưu ngay
+            renderTable();
         };
     }
     return td;
@@ -379,10 +365,10 @@ function handleImport(e) {
             if (notFound.length > 0) {
                 msg += `Không tìm thấy:\n` + notFound.slice(0,10).join("\n") + (notFound.length>10 ? "\n...và " + (notFound.length-10) + " dòng khác" : "");
             }
-            msg += "\nNhấn nút 💾 Lưu lại để lưu vĩnh viễn vào Supabase.";
+            msg += "\nNhấn nút 💾 Lưu lại để lưu vĩnh viễn.";
             alert(msg);
         } catch(err) {
-            alert("Lỗi khi đọc file Excel: " + err.message);
+            alert("Lỗi đọc file Excel: " + err.message);
         }
     };
     reader.readAsArrayBuffer(file);
