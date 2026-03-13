@@ -66,6 +66,7 @@
         <button class="btn-success" onclick="exportToExcel()">📤 Export Excel</button>
         <input type="file" id="fileInput" accept=".xls,.xlsx" style="display:none" onchange="handleImport(event)">
         <button class="btn-primary" id="btnImport" onclick="document.getElementById('fileInput').click()">📥 Import từ Excel</button>
+        <button class="btn-success" onclick="saveToSupabase()">💾 Lưu lại</button>
     </div>
 
     <table id="dataTable">
@@ -85,7 +86,9 @@
 
     <div class="note">
         <strong>Hướng dẫn sử dụng:</strong><br>
-        • Đăng nhập bằng tài khoản admin để cập nhật dữ liệu.<br>
+        • Chỉnh sửa hoặc Import → thay đổi tạm thời trên bảng.<br>
+        • Nhấn nút <strong>💾 Lưu lại</strong> để lưu vĩnh viễn vào Supabase.<br>
+        • Reload trang sẽ lấy dữ liệu mới nhất từ Supabase.
     </div>
 </div>
 
@@ -93,15 +96,13 @@
 // ====================== CẤU HÌNH SUPABASE ======================
 const SUPABASE_URL = 'https://bsyqklmoorafermypoyj.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJzeXFrbG1vb3JhZmVybXlwb3lqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNzQ1NzMsImV4cCI6MjA4ODg1MDU3M30.wm6P171WQnaIMKB1FJEh1OPeDc75cI3VHuk-ASDRooo';
-
-// Sửa lỗi: dùng supabase.createClient (chữ thường)
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let isAdmin = false;
 let currentDateKey = "";
 let treeData = [];
 
-// ====================== DỮ LIỆU MẪU BAN ĐẦU (đầy đủ) ======================
+// ====================== DỮ LIỆU MẪU BAN ĐẦU ======================
 function resetTreeData() {
     treeData = [
         { id:"A", tt:"A", chi_tieu:"Tổng thu toàn tỉnh (I+II+III)", level:0, parent:null, govt:26545000, prov:26560000, actual:5998273, expanded:true },
@@ -130,8 +131,17 @@ function resetTreeData() {
 }
 
 // ====================== NGÀY & ĐỊNH DẠNG ======================
-function getYesterdayKey() { const d = new Date(); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10); }
-function formatDateVN(key) { if(!key) return ""; const [y,m,d] = key.split('-'); return `${d}/${m}/${y}`; }
+function getYesterdayKey() {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0,10);
+}
+
+function formatDateVN(key) {
+    if (!key) return "";
+    const [y, m, d] = key.split('-');
+    return `${d}/${m}/${y}`;
+}
 
 // ====================== ADMIN AUTH ======================
 async function loginAdmin() {
@@ -140,10 +150,10 @@ async function loginAdmin() {
 
     if (!email || !password) return alert("Vui lòng nhập email và mật khẩu!");
 
-    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-        alert("Đăng nhập thất bại: " + (error.message || "Kiểm tra kết nối hoặc tài khoản"));
+        alert("Đăng nhập thất bại: " + (error.message || "Kiểm tra kết nối mạng hoặc tài khoản"));
         console.error(error);
         return;
     }
@@ -155,7 +165,7 @@ async function loginAdmin() {
 }
 
 async function logoutAdmin() {
-    await supabaseClient.auth.signOut();
+    await supabase.auth.signOut();
     isAdmin = false;
     document.getElementById("adminStatus").innerHTML = "";
     disableEditMode();
@@ -163,7 +173,7 @@ async function logoutAdmin() {
 }
 
 async function checkAdminSession() {
-    const { data: { session } } = await supabaseClient.auth.getSession();
+    const { data: { session } } = await supabase.auth.getSession();
     if (session) {
         isAdmin = true;
         document.getElementById("adminStatus").innerHTML = `<span style="color:#15803d;">✓ Admin: ${session.user.email} (tự động)</span>`;
@@ -184,7 +194,10 @@ function disableEditMode() {
 
 // ====================== LƯU THỦ CÔNG ======================
 async function saveToSupabase() {
-    if (!isAdmin || !currentDateKey) return alert("Chưa đăng nhập Admin hoặc chưa chọn ngày!");
+    if (!isAdmin || !currentDateKey) {
+        alert("Chưa đăng nhập Admin hoặc chưa chọn ngày báo cáo!");
+        return;
+    }
 
     const { error } = await supabase
         .from('reports')
@@ -196,31 +209,18 @@ async function saveToSupabase() {
 
     if (error) {
         alert("Lưu thất bại: " + error.message);
-        console.error(error);
+        console.error("Lỗi lưu:", error);
     } else {
-        alert(`✅ Đã lưu thành công dữ liệu ngày ${formatDateVN(currentDateKey)} !`);
+        alert(`✅ Đã lưu thành công dữ liệu ngày ${formatDateVN(currentDateKey)} vào Supabase!`);
     }
 }
-// ====================== SUPABASE SAVE/LOAD ======================
-async function saveCurrentData() {
-    if (!isAdmin || !currentDateKey) return;
 
-    const { error } = await supabaseClient
-        .from('reports')
-        .upsert({
-            date_key: currentDateKey,
-            data_json: treeData,
-            updated_at: new Date().toISOString()
-        }, { onConflict: 'date_key' });
-
-    if (error) console.error("Lỗi lưu:", error);
-}
-
+// ====================== LOAD & RENDER ======================
 async function loadDataByDate(dateKey) {
     if (!dateKey) dateKey = getYesterdayKey();
     currentDateKey = dateKey;
 
-    const { data, error } = await supabaseClient
+    const { data, error } = await supabase
         .from('reports')
         .select('data_json')
         .eq('date_key', dateKey)
@@ -239,7 +239,7 @@ async function loadDataByDate(dateKey) {
 }
 
 async function loadHistoryDates() {
-    const { data, error } = await supabaseClient
+    const { data, error } = await supabase
         .from('reports')
         .select('date_key')
         .order('date_key', { ascending: false });
@@ -325,14 +325,13 @@ function createCell(val, field, node) {
         td.onblur = function() {
             let raw = this.textContent.replace(/[^0-9.-]/g, "");
             node[field] = parseFloat(raw) || 0;
-            if (field === "actual") saveCurrentData();
-            renderTable();
+            renderTable(); // chỉ cập nhật bảng, không lưu ngay
         };
     }
     return td;
 }
 
-// ====================== IMPORT & EXPORT ======================
+// ====================== IMPORT ======================
 function handleImport(e) {
     if (!isAdmin) return alert("Chỉ Admin mới được import!");
     const file = e.target.files[0];
@@ -374,13 +373,13 @@ function handleImport(e) {
                 }
             });
 
-           saveCurrentData = () => {};
             renderTable();
 
-            let msg = `Import hoàn tất: cập nhật ${updated} dòng.\n`;
+            let msg = `Import thành công: cập nhật ${updated} dòng.\n`;
             if (notFound.length > 0) {
                 msg += `Không tìm thấy:\n` + notFound.slice(0,10).join("\n") + (notFound.length>10 ? "\n...và " + (notFound.length-10) + " dòng khác" : "");
             }
+            msg += "\nNhấn nút 💾 Lưu lại để lưu vĩnh viễn vào Supabase.";
             alert(msg);
         } catch(err) {
             alert("Lỗi khi đọc file Excel: " + err.message);
@@ -389,6 +388,7 @@ function handleImport(e) {
     reader.readAsArrayBuffer(file);
 }
 
+// ====================== EXPORT ======================
 function exportToExcel() {
     const rows = [["TT","Chỉ tiêu","Dự toán CP","Dự toán tỉnh","Thực hiện","% CP","% tỉnh"]];
     function addRow(node, depth=0) {
@@ -418,4 +418,3 @@ window.onload = async function() {
 </script>
 </body>
 </html>
-
