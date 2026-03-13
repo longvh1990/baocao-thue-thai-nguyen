@@ -223,13 +223,13 @@ function createCell(val, field, node) {
     if (isAdmin) {
         td.contentEditable = true;
         td.onblur = function() {
-			let raw = this.textContent.replace(/[^0-9.-]/g, "");
-			node[field] = parseFloat(raw) || 0;
-			if (field === "actual" && isAdmin) {
-        saveCurrentData();  // tự động lưu khi sửa actual
-    }
-    renderTable();
-};
+            let raw = this.textContent.replace(/[^0-9.-]/g, "");
+            node[field] = parseFloat(raw) || 0;
+            if (field === "actual") {
+                updateParentTotals(); 
+            }
+            renderTable();
+        };
     }
     return td;
 }
@@ -409,5 +409,6 @@ window.onload = async function() {
 </script>
 </body>
 </html>
+
 
 
