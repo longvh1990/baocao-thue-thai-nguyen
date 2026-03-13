@@ -90,8 +90,7 @@
 
 <script>
 // ====================== CẤU HÌNH ======================
-const ADMIN_PASSWORD = "admin2026"; // thay đổi nếu cần
-let isAdmin = localStorage.getItem("isAdmin") === "true";
+
 let currentDateKey = "";
 let treeData = [];
 
@@ -129,31 +128,64 @@ function getYesterdayKey() { const d=new Date(); d.setDate(d.getDate()-1); retur
 function formatDateVN(key) { if(!key) return ""; const [y,m,d]=key.split('-'); return `${d}/${m}/${y}`; }
 
 // ====================== ADMIN PERSISTENCE ======================
-function checkAdmin() {
-    isAdmin = localStorage.getItem("isAdmin") === "true";
-    document.getElementById("adminStatus").innerHTML = isAdmin 
-        ? '<span style="color:#15803d;">✓ Đang ở chế độ ADMIN</span>' 
-        : '';
-    renderTable(); // cập nhật khả năng edit
-}
-
-function loginAdmin() {
-    const pass = document.getElementById("adminPass").value.trim();
-    if (pass === ADMIN_PASSWORD) {
-        localStorage.setItem("isAdmin", "true");
-        checkAdmin();
-        alert("Đăng nhập Admin thành công!");
+async function checkAdminSession() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+        isAdmin = true;
+        document.getElementById("adminStatus").innerHTML = 
+            `<span style="color:#15803d;">✓ Admin: ${session.user.email}</span>`;
+        enableEditMode();  // bật chỉnh sửa
     } else {
-        alert("Mật khẩu sai!");
+        isAdmin = false;
+        document.getElementById("adminStatus").innerHTML = "";
+        disableEditMode();
     }
 }
 
-function logoutAdmin() {
-    localStorage.removeItem("isAdmin");
-    checkAdmin();
-    alert("Đã thoát chế độ Admin.");
+// Trong window.onload
+window.onload = async function() {
+    await checkAdminSession();   // kiểm tra ngay khi load
+
+async function loginAdmin() {
+    const email = prompt("Nhập email admin:", "admin@thainguyen.gov.vn"); // hoặc thêm input field
+    const password = document.getElementById("adminPass").value.trim();
+
+    if (!email || !password) return alert("Vui lòng nhập đầy đủ!");
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: password
+    });
+
+    if (error) {
+        alert("Đăng nhập thất bại: " + error.message);
+        return;
+    }
+
+    isAdmin = true;
+    document.getElementById("adminStatus").innerHTML = `<span style="color:#15803d;">✓ Admin: ${data.user.email}</span>`;
+    enableEditMode(); // hàm bật editable cells
+    alert("Đăng nhập Admin thành công!");
 }
 
+window.onload = async function() {
+    // ... code cũ ...
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+        isAdmin = true;
+        document.getElementById("adminStatus").innerHTML = `<span style="color:#15803d;">✓ Admin: ${session.user.email} (tự động)</span>`;
+        enableEditMode();
+    }
+    // ... tiếp tục loadHistoryDates(), renderTable() ...
+};
+
+async function logoutAdmin() {
+    await supabase.auth.signOut();
+    isAdmin = false;
+    document.getElementById("adminStatus").innerHTML = "";
+    disableEditMode();
+    alert("Đã logout Admin.");
+}
 // ====================== LỊCH SỬ DỮ LIỆU ======================
 function saveCurrentData() {
     if (!currentDateKey) return;
@@ -358,3 +390,4 @@ window.onload = function() {
 </body>
 
 </html>
+
