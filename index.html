@@ -94,7 +94,9 @@
 // ====================== CẤU HÌNH SUPABASE ======================
 const SUPABASE_URL = 'https://bsyqklmoorafermypoyj.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJzeXFrbG1vb3JhZmVybXlwb3lqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNzQ1NzMsImV4cCI6MjA4ODg1MDU3M30.wm6P171WQnaIMKB1FJEh1OPeDc75cI3VHuk-ASDRooo';
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);  // sửa đúng cú pháp
+
+// Sửa lỗi: dùng tên biến khác để tránh trùng lặp
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let isAdmin = false;
 let currentDateKey = "";
@@ -139,11 +141,11 @@ async function loginAdmin() {
 
     if (!email || !password) return alert("Vui lòng nhập email và mật khẩu!");
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
 
     if (error) {
         alert("Đăng nhập thất bại: " + error.message);
-        console.error(error);
+        console.error("Lỗi đăng nhập:", error);
         return;
     }
 
@@ -154,7 +156,7 @@ async function loginAdmin() {
 }
 
 async function logoutAdmin() {
-    await supabase.auth.signOut();
+    await supabaseClient.auth.signOut();
     isAdmin = false;
     document.getElementById("adminStatus").innerHTML = "";
     disableEditMode();
@@ -162,7 +164,7 @@ async function logoutAdmin() {
 }
 
 async function checkAdminSession() {
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session } } = await supabaseClient.auth.getSession();
     if (session) {
         isAdmin = true;
         document.getElementById("adminStatus").innerHTML = `<span style="color:#15803d;">✓ Admin: ${session.user.email} (tự động)</span>`;
@@ -185,7 +187,9 @@ function disableEditMode() {
 async function saveToSupabase() {
     if (!isAdmin || !currentDateKey) return alert("Chưa đăng nhập Admin hoặc chưa chọn ngày!");
 
-    const { error } = await supabase
+    console.log("Đang lưu dữ liệu cho ngày:", currentDateKey);
+
+    const { error } = await supabaseClient
         .from('reports')
         .upsert({
             date_key: currentDateKey,
@@ -199,122 +203,6 @@ async function saveToSupabase() {
     } else {
         alert(`✅ Đã lưu thành công dữ liệu ngày ${formatDateVN(currentDateKey)}!`);
     }
-}
-
-// ====================== LOAD & RENDER ======================
-async function loadDataByDate(dateKey) {
-    if (!dateKey) dateKey = getYesterdayKey();
-    currentDateKey = dateKey;
-
-    const { data, error } = await supabase
-        .from('reports')
-        .select('data_json')
-        .eq('date_key', dateKey)
-        .maybeSingle();
-
-    if (error) console.error("Lỗi load:", error);
-
-    if (data?.data_json) {
-        treeData = data.data_json;
-    } else {
-        resetTreeData();
-    }
-
-    document.getElementById("report-date").textContent = formatDateVN(dateKey);
-    renderTable();
-}
-
-async function loadHistoryDates() {
-    const { data, error } = await supabase
-        .from('reports')
-        .select('date_key')
-        .order('date_key', { ascending: false });
-
-    const sel = document.getElementById("historyDate");
-    sel.innerHTML = "";
-
-    if (error || !data || data.length === 0) {
-        const defDate = getYesterdayKey();
-        const opt = document.createElement("option");
-        opt.value = defDate;
-        opt.text = `Tính đến ngày ${formatDateVN(defDate)} (mẫu)`;
-        opt.selected = true;
-        sel.appendChild(opt);
-        loadDataByDate(defDate);
-        return;
-    }
-
-    data.forEach(row => {
-        const opt = document.createElement("option");
-        opt.value = row.date_key;
-        opt.text = `Tính đến ngày ${formatDateVN(row.date_key)}`;
-        sel.appendChild(opt);
-    });
-
-    if (data.length > 0) {
-        sel.value = data[0].date_key;
-        loadDataByDate(data[0].date_key);
-    }
-}
-
-// ====================== RENDER TABLE ======================
-function renderTable() {
-    const tbody = document.querySelector("#dataTable tbody");
-    tbody.innerHTML = "";
-    treeData.filter(r => !r.parent).forEach(node => renderNode(node, tbody, 0));
-}
-
-function renderNode(node, tbody, depth) {
-    const tr = document.createElement("tr");
-    tr.className = `level-${node.level}`;
-
-    const tdTT = document.createElement("td"); tdTT.textContent = node.tt || ""; tr.appendChild(tdTT);
-
-    const tdChi = document.createElement("td");
-    tdChi.style.paddingLeft = `${depth*30 + 15}px`;
-    const hasChild = treeData.some(r => r.parent === node.id);
-    if (hasChild) {
-        tdChi.innerHTML = `<strong>${node.chi_tieu}</strong> ${node.expanded ? '▼' : '▶'}`;
-        tdChi.style.cursor = "pointer";
-        tdChi.onclick = () => { node.expanded = !node.expanded; renderTable(); };
-    } else {
-        tdChi.textContent = node.chi_tieu;
-    }
-    tr.appendChild(tdChi);
-
-    tr.appendChild(createCell(node.govt, "govt", node));
-    tr.appendChild(createCell(node.prov, "prov", node));
-    tr.appendChild(createCell(node.actual, "actual", node));
-
-    const tdCP = document.createElement("td"); tdCP.className="percent";
-    tdCP.textContent = node.govt ? (node.actual / node.govt * 100).toFixed(1) + "%" : "—";
-    tr.appendChild(tdCP);
-
-    const tdProv = document.createElement("td"); tdProv.className="percent";
-    tdProv.textContent = node.prov ? (node.actual / node.prov * 100).toFixed(1) + "%" : "—";
-    tr.appendChild(tdProv);
-
-    tbody.appendChild(tr);
-
-    if (node.expanded) {
-        treeData.filter(r => r.parent === node.id).forEach(c => renderNode(c, tbody, depth+1));
-    }
-}
-
-function createCell(val, field, node) {
-    const td = document.createElement("td");
-    td.textContent = val.toLocaleString("vi-VN");
-    td.className = "contenteditable";
-
-    if (isAdmin) {
-        td.contentEditable = true;
-        td.onblur = function() {
-            let raw = this.textContent.replace(/[^0-9.-]/g, "");
-            node[field] = parseFloat(raw) || 0;
-            renderTable();
-        };
-    }
-    return td;
 }
 
 // ====================== IMPORT ======================
@@ -372,27 +260,6 @@ function handleImport(e) {
         }
     };
     reader.readAsArrayBuffer(file);
-}
-
-// ====================== EXPORT ======================
-function exportToExcel() {
-    const rows = [["TT","Chỉ tiêu","Dự toán CP","Dự toán tỉnh","Thực hiện","% CP","% tỉnh"]];
-    function addRow(node, depth=0) {
-        rows.push([
-            node.tt || "",
-            "  ".repeat(depth) + node.chi_tieu,
-            node.govt,
-            node.prov,
-            node.actual,
-            node.govt ? (node.actual/node.govt*100).toFixed(1)+"%" : "—",
-            node.prov ? (node.actual/node.prov*100).toFixed(1)+"%" : "—"
-        ]);
-        if (node.expanded) treeData.filter(r=>r.parent===node.id).forEach(c=>addRow(c,depth+1));
-    }
-    treeData.filter(r=>!r.parent).forEach(n=>addRow(n));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "BaoCao");
-    XLSX.writeFile(wb, `BaoCao_NSNN_ThaiNguyen_${currentDateKey || "latest"}.xlsx`);
 }
 
 // ====================== KHỞI ĐỘNG ======================
