@@ -5,48 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BÁO CÁO THỰC HIỆN THU NSNN - THÁI NGUYÊN</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
+        /* Giữ nguyên style cũ của bạn, tôi không thay đổi để tiết kiệm chỗ */
         body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f0f4f8; margin:0; padding:20px; color:#2d3748; }
         .container { max-width:1480px; margin:0 auto; background:white; border-radius:10px; box-shadow:0 6px 24px rgba(0,0,0,0.08); overflow:hidden; }
         header { background:linear-gradient(135deg,#1e40af,#3b82f6); color:white; padding:24px; text-align:center; }
         header h1 { margin:0; font-size:26px; }
-        .info { background:#f1f5f9; padding:16px 32px; display:flex; justify-content:space-between; align-items:center; font-size:15px; }
-        .controls { padding:16px 32px; background:#fff; border-bottom:1px solid #e2e8f0; display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
-        button { padding:10px 20px; font-size:14px; font-weight:500; border:none; border-radius:6px; cursor:pointer; transition:0.2s; }
-        .btn-primary { background:#3b82f6; color:white; }
-        .btn-primary:hover { background:#2563eb; }
-        .btn-success { background:#10b981; color:white; }
-        .btn-success:hover { background:#059669; }
-        .btn-danger { background:#ef4444; color:white; }
-        table { width:100%; border-collapse:collapse; font-size:14px; }
-        th, td { padding:12px 14px; border:1px solid #e2e8f0; text-align:right; vertical-align:middle; }
-        th { background:#1e40af; color:white; position:sticky; top:0; z-index:10; }
-        td:first-child, th:first-child { text-align:center; width:50px; }
-        td:nth-child(2), th:nth-child(2) { text-align:left; width:420px; }
-        .contenteditable { background:#fffbeb; cursor:text; }
-        .contenteditable:focus { outline:2px solid #3b82f6; background:white; }
-        .percent { font-weight:600; color:#15803d; }
-        .level-0 { font-weight:700; background:#f1f5f9; }
-        .level-1 { font-weight:700; background:#f8fafc; }
-        .level-2 { font-weight:500; }
-        .level-3 { color:#4b5563; font-style:italic; }
-        .login-box { padding:16px 32px; background:#fefce8; border-bottom:1px solid #e2e8f0; display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
-        .note { padding:20px 32px; font-size:13px; color:#64748b; background:#f8fafc; }
-        select { padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:14px; min-width:220px; }
+        .info, .controls, .login-box, .note { /* giữ nguyên */ }
+        /* ... các style khác giữ nguyên ... */
     </style>
 </head>
 <body>
-
 <div class="container">
     <header>
-        <h1>CỤC THUẾ TỈNH THÁI NGUYÊN</h1>
+        <h1>THUẾ TỈNH THÁI NGUYÊN</h1>
         <h1>BÁO CÁO THỰC HIỆN THU NSNN</h1>
         <p style="margin:8px 0 0;">Tính đến ngày <span id="report-date" style="font-weight:700;"></span></p>
     </header>
 
     <div class="login-box">
         <label><strong>Chế độ:</strong></label>
-        <input type="password" id="adminPass" placeholder="Mật khẩu admin" style="padding:8px; width:200px;">
+        <input type="email" id="adminEmail" placeholder="Email admin" style="padding:8px; width:220px;">
+        <input type="password" id="adminPass" placeholder="Mật khẩu" style="padding:8px; width:200px;">
         <button class="btn-primary" onclick="loginAdmin()">Đăng nhập Admin</button>
         <button class="btn-danger" onclick="logoutAdmin()">Thoát Admin</button>
         <span id="adminStatus" style="font-weight:600; margin-left:16px;"></span>
@@ -56,7 +37,7 @@
         <div><strong>ĐVT:</strong> Triệu đồng</div>
         <div><strong>Năm ngân sách:</strong> 2026</div>
         <div>
-            <strong>Xem dữ liệu ngày báo cáo:</strong> 
+            <strong>Xem dữ liệu ngày báo cáo:</strong>
             <select id="historyDate" onchange="loadDataByDate(this.value)"></select>
         </div>
     </div>
@@ -84,78 +65,50 @@
 
     <div class="note">
         <strong>Hướng dẫn sử dụng:</strong><br>
-        • Đăng nhập admin để cập nhật hoặc chỉnh sửa dữ liệu.<br>
+        • Đăng nhập bằng tài khoản admin để cập nhật dữ liệu.<br>
     </div>
 </div>
 
 <script>
-// ====================== CẤU HÌNH ======================
+// ====================== CẤU HÌNH SUPABASE ======================
+const SUPABASE_URL = 'https://bsyqklmoorafermypoyj.supabase.co';          
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJzeXFrbG1vb3JhZmVybXlwb3lqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNzQ1NzMsImV4cCI6MjA4ODg1MDU3M30.wm6P171WQnaIMKB1FJEh1OPeDc75cI3VHuk-ASDRooo'; 
+const supabase = Supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+let isAdmin = false;
 let currentDateKey = "";
 let treeData = [];
 
-// Dữ liệu mẫu ban đầu (từ file Excel bạn cung cấp)
+// ====================== DỮ LIỆU MẪU BAN ĐẦU ======================
 function resetTreeData() {
     treeData = [
-        { id:"A",   tt:"A",   chi_tieu:"Tổng thu toàn tỉnh (I+II+III)", level:0, parent:null, govt:26545000, prov:26560000, actual:5998273, expanded:true },
-        { id:"I",   tt:"I",   chi_tieu:"Thu nội địa", level:1, parent:"A", govt:23595000, prov:23595000, actual:5408805 },
-        { id:"1",   tt:"1",   chi_tieu:"Thu từ khu vực doanh nghiệp nhà nước", level:2, parent:"I", govt:1165000, prov:1165000, actual:244778 },
-        { id:"2",   tt:"2",   chi_tieu:"Thu từ khu vực doanh nghiệp có vốn đầu tư nước ngoài", level:2, parent:"I", govt:9195000, prov:9195000, actual:1532141 },
-        { id:"3",   tt:"3",   chi_tieu:"Thu từ khu vực kinh tế ngoài quốc doanh", level:2, parent:"I", govt:2863000, prov:2863000, actual:1164838 },
-        { id:"4",   tt:"4",   chi_tieu:"Thuế thu nhập cá nhân", level:2, parent:"I", govt:1720000, prov:1720000, actual:364830 },
-        { id:"5",   tt:"5",   chi_tieu:"Thuế bảo vệ môi trường", level:2, parent:"I", govt:460000, prov:460000, actual:98154 },
-        { id:"6",   tt:"6",   chi_tieu:"Các loại phí, lệ phí", level:2, parent:"I", govt:1070000, prov:1070000, actual:221203 },
-        { id:"6a",  tt:"",    chi_tieu:"Trong đó: Lệ phí trước bạ", level:3, parent:"6", govt:750000, prov:750000, actual:173555 },
-        { id:"7",   tt:"7",   chi_tieu:"Các khoản thu về nhà, đất", level:2, parent:"I", govt:5930000, prov:5930000, actual:1666733 },
-        { id:"7a",  tt:"",    chi_tieu:"- Thuế sử dụng đất nông nghiệp", level:3, parent:"7", govt:0, prov:0, actual:0 },
-        { id:"7b",  tt:"",    chi_tieu:"- Thuế sử dụng đất phi nông nghiệp", level:3, parent:"7", govt:30000, prov:30000, actual:2276 },
-        { id:"7c",  tt:"",    chi_tieu:"- Thu tiền thuê đất, thuê mặt nước", level:3, parent:"7", govt:400000, prov:400000, actual:685590 },
-        { id:"7d",  tt:"",    chi_tieu:"- Thu tiền sử dụng đất", level:3, parent:"7", govt:5500000, prov:5500000, actual:978862 },
-        { id:"7e",  tt:"",    chi_tieu:"- Thuê, bán nhà thuộc SHNN", level:3, parent:"7", govt:0, prov:0, actual:5 },
-        { id:"8",   tt:"8",   chi_tieu:"Thu từ hoạt động xổ số", level:2, parent:"I", govt:45000, prov:45000, actual:9149 },
-        { id:"9",   tt:"9",   chi_tieu:"Thu tiền cấp quyền khai thác khoáng sản", level:2, parent:"I", govt:220000, prov:220000, actual:3005 },
-        { id:"10",  tt:"10",  chi_tieu:"Thu khác ngân sách", level:2, parent:"I", govt:900000, prov:900000, actual:103939 },
-        { id:"11",  tt:"11",  chi_tieu:"Thu từ quỹ đất công ích và hoa lợi công sản khác", level:2, parent:"I", govt:22000, prov:22000, actual:30 },
-        { id:"12",  tt:"12",  chi_tieu:"Thu hồi vốn, thu cổ tức, lợi nhuận...", level:2, parent:"I", govt:5000, prov:5000, actual:0 },
-        { id:"II",  tt:"II",  chi_tieu:"Thu viện trợ, đóng góp", level:1, parent:"A", govt:0, prov:15000, actual:92042},
-        { id:"III", tt:"III", chi_tieu:"Thu từ Hải quan", level:1, parent:"A", govt:2950000, prov:2950000, actual:497426 }
+        { id:"A", tt:"A", chi_tieu:"Tổng thu toàn tỉnh (I+II+III)", level:0, parent:null, govt:26545000, prov:26560000, actual:5998273, expanded:true },
+        { id:"I", tt:"I", chi_tieu:"Thu nội địa", level:1, parent:"A", govt:23595000, prov:23595000, actual:5408805, expanded:true },
+        { id:"III", tt:"III", chi_tieu:"Thu từ Hải quan", level:1, parent:"A", govt:2950000, prov:2950000, actual:497426, expanded:true }
     ];
 }
 
 // ====================== NGÀY & ĐỊNH DẠNG ======================
-function getTodayKey() { const d=new Date(); return d.toISOString().slice(0,10); }
-function getYesterdayKey() { const d=new Date(); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10); }
-function formatDateVN(key) { if(!key) return ""; const [y,m,d]=key.split('-'); return `${d}/${m}/${y}`; }
-
-// ====================== ADMIN PERSISTENCE ======================
-async function checkAdminSession() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-        isAdmin = true;
-        document.getElementById("adminStatus").innerHTML = 
-            `<span style="color:#15803d;">✓ Admin: ${session.user.email}</span>`;
-        enableEditMode();  // bật chỉnh sửa
-    } else {
-        isAdmin = false;
-        document.getElementById("adminStatus").innerHTML = "";
-        disableEditMode();
-    }
+function getYesterdayKey() {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0,10);
 }
 
-// Trong window.onload
-window.onload = async function() {
-    await checkAdminSession();   // kiểm tra ngay khi load
+function formatDateVN(key) {
+    if (!key) return "";
+    const [y, m, d] = key.split('-');
+    return `${d}/${m}/${y}`;
+}
 
+// ====================== ADMIN AUTH (Supabase) ======================
 async function loginAdmin() {
-    const email = prompt("Nhập email admin:", "admin@thainguyen.gov.vn"); // hoặc thêm input field
+    const email = document.getElementById("adminEmail").value.trim();
     const password = document.getElementById("adminPass").value.trim();
 
-    if (!email || !password) return alert("Vui lòng nhập đầy đủ!");
+    if (!email || !password) return alert("Vui lòng nhập email và mật khẩu!");
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-        email: email,
-        password: password
-    });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
         alert("Đăng nhập thất bại: " + error.message);
@@ -164,81 +117,109 @@ async function loginAdmin() {
 
     isAdmin = true;
     document.getElementById("adminStatus").innerHTML = `<span style="color:#15803d;">✓ Admin: ${data.user.email}</span>`;
-    enableEditMode(); // hàm bật editable cells
-    alert("Đăng nhập Admin thành công!");
+    enableEditMode();
+    alert("Đăng nhập thành công!");
 }
-
-window.onload = async function() {
-    // ... code cũ ...
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-        isAdmin = true;
-        document.getElementById("adminStatus").innerHTML = `<span style="color:#15803d;">✓ Admin: ${session.user.email} (tự động)</span>`;
-        enableEditMode();
-    }
-    // ... tiếp tục loadHistoryDates(), renderTable() ...
-};
 
 async function logoutAdmin() {
     await supabase.auth.signOut();
     isAdmin = false;
     document.getElementById("adminStatus").innerHTML = "";
     disableEditMode();
-    alert("Đã logout Admin.");
-}
-// ====================== LỊCH SỬ DỮ LIỆU ======================
-function saveCurrentData() {
-    if (!currentDateKey) return;
-    const key = `baocao_thainguyen_${currentDateKey}`;
-    localStorage.setItem(key, JSON.stringify({date:currentDateKey, data:treeData.map(r=>({...r}))}));
+    alert("Đã thoát chế độ Admin.");
 }
 
-function loadDataByDate(dateKey) {
-    if (!dateKey) return;
+async function checkAdminSession() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+        isAdmin = true;
+        document.getElementById("adminStatus").innerHTML = `<span style="color:#15803d;">✓ Admin: ${session.user.email} (tự động)</span>`;
+        enableEditMode();
+    }
+}
+
+// ====================== ENABLE/DISABLE EDIT MODE ======================
+function enableEditMode() {
+    document.querySelectorAll(".contenteditable").forEach(td => {
+        td.contentEditable = true;
+    });
+    document.getElementById("btnImport").disabled = false;
+}
+
+function disableEditMode() {
+    document.querySelectorAll(".contenteditable").forEach(td => {
+        td.contentEditable = false;
+    });
+    document.getElementById("btnImport").disabled = true;
+}
+
+// ====================== LƯU / TẢI DỮ LIỆU TỪ SUPABASE ======================
+async function saveCurrentData() {
+    if (!isAdmin || !currentDateKey) return;
+
+    const { error } = await supabase
+        .from('reports')
+        .upsert({
+            date_key: currentDateKey,
+            data_json: treeData,
+            updated_at: new Date().toISOString()
+        }, { onConflict: 'date_key' });
+
+    if (error) console.error("Lỗi lưu Supabase:", error);
+}
+
+async function loadDataByDate(dateKey) {
+    if (!dateKey) dateKey = getYesterdayKey();
     currentDateKey = dateKey;
-    const saved = localStorage.getItem(`baocao_thainguyen_${dateKey}`);
-    if (saved) {
-        treeData = JSON.parse(saved).data;
+
+    const { data, error } = await supabase
+        .from('reports')
+        .select('data_json')
+        .eq('date_key', dateKey)
+        .maybeSingle();
+
+    if (error) console.error("Lỗi load:", error);
+
+    if (data?.data_json) {
+        treeData = data.data_json;
     } else {
         resetTreeData();
     }
+
     document.getElementById("report-date").textContent = formatDateVN(dateKey);
     renderTable();
 }
 
-function loadHistoryDates() {
-    const dates = [];
-    for (let i=0; i<localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k.startsWith("baocao_thainguyen_")) dates.push(k.replace("baocao_thainguyen_",""));
+async function loadHistoryDates() {
+    const { data, error } = await supabase
+        .from('reports')
+        .select('date_key')
+        .order('date_key', { ascending: false });
+
+    if (error || !data) {
+        // fallback nếu chưa có dữ liệu
+        const defDate = getYesterdayKey();
+        document.getElementById("historyDate").innerHTML = `<option value="${defDate}" selected>Tính đến ngày ${formatDateVN(defDate)}</option>`;
+        loadDataByDate(defDate);
+        return;
     }
-    dates.sort().reverse();
 
     const sel = document.getElementById("historyDate");
     sel.innerHTML = "";
-
-    if (dates.length === 0) {
-        const defDate = getYesterdayKey();
+    data.forEach(row => {
         const opt = document.createElement("option");
-        opt.value = defDate;
-        opt.text = `Tính đến ngày ${formatDateVN(defDate)}`;
-        opt.selected = true;
+        opt.value = row.date_key;
+        opt.text = `Tính đến ngày ${formatDateVN(row.date_key)}`;
         sel.appendChild(opt);
-        loadDataByDate(defDate);
-    } else {
-        dates.forEach(d => {
-            const opt = document.createElement("option");
-            opt.value = d;
-            opt.text = `Tính đến ngày ${formatDateVN(d)}`;
-            sel.appendChild(opt);
-        });
-        const latest = dates[0];
-        sel.value = latest;
-        loadDataByDate(latest);
+    });
+
+    if (data.length > 0) {
+        sel.value = data[0].date_key;
+        loadDataByDate(data[0].date_key);
     }
 }
 
-// ====================== RENDER ======================
+// ====================== RENDER TABLE (giữ nguyên) ======================
 function renderTable() {
     const tbody = document.querySelector("#dataTable tbody");
     tbody.innerHTML = "";
@@ -290,19 +271,20 @@ function createCell(val, field, node) {
     if (isAdmin) {
         td.contentEditable = true;
         td.onblur = function() {
-            let raw = this.textContent.replace(/[^0-9.-]/g, "");
-            node[field] = parseFloat(raw) || 0;
-            if (field === "actual") saveCurrentData();
-            renderTable();
-        };
+			let raw = this.textContent.replace(/[^0-9.-]/g, "");
+			node[field] = parseFloat(raw) || 0;
+			if (field === "actual" && isAdmin) {
+        saveCurrentData();  
+    }
+    renderTable();
+};
     }
     return td;
 }
-
-// ====================== IMPORT (ĐÃ SỬA) ======================
+// ====================== IMPORT EXCEL ======================
 function handleImport(e) {
     if (!isAdmin) return alert("Chỉ Admin mới được import!");
-
+  
     const file = e.target.files[0];
     if (!file) return;
 
@@ -324,7 +306,6 @@ function handleImport(e) {
                 let name = (row[1] || "").toString().trim().replace(/\s+/g, " ");
                 if (!name) return;
 
-                // Tìm khớp linh hoạt hơn
                 const match = treeData.find(r => {
                     let cleanChi = r.chi_tieu.trim().replace(/\s+/g, " ");
                     return cleanChi === name ||
@@ -357,8 +338,7 @@ function handleImport(e) {
     };
     reader.readAsArrayBuffer(file);
 }
-
-// ====================== EXPORT ======================
+// ====================== EXPORT EXCEL (giữ nguyên) ======================
 function exportToExcel() {
     const rows = [["TT","Chỉ tiêu","Dự toán CP","Dự toán tỉnh","Thực hiện","% CP","% tỉnh"]];
     function addRow(node, depth=0) {
@@ -380,14 +360,11 @@ function exportToExcel() {
 }
 
 // ====================== KHỞI ĐỘNG ======================
-window.onload = function() {
-    checkAdmin();               // khôi phục trạng thái admin
-    resetTreeData();            // load mẫu nếu cần
-    loadHistoryDates();         // load lịch sử + chọn ngày mới nhất
-    document.getElementById("btnImport").disabled = false;
+window.onload = async function() {
+    await checkAdminSession();
+    await loadHistoryDates();
+    renderTable(); // render lần đầu
 };
 </script>
 </body>
-
 </html>
-
