@@ -182,6 +182,25 @@ function disableEditMode() {
     document.getElementById("btnImport").disabled = true;
 }
 
+// ====================== LƯU THỦ CÔNG ======================
+async function saveToSupabase() {
+    if (!isAdmin || !currentDateKey) return alert("Chưa đăng nhập Admin hoặc chưa chọn ngày!");
+
+    const { error } = await supabase
+        .from('reports')
+        .upsert({
+            date_key: currentDateKey,
+            data_json: treeData,
+            updated_at: new Date().toISOString()
+        }, { onConflict: 'date_key' });
+
+    if (error) {
+        alert("Lưu thất bại: " + error.message);
+        console.error(error);
+    } else {
+        alert(`✅ Đã lưu thành công dữ liệu ngày ${formatDateVN(currentDateKey)} !`);
+    }
+}
 // ====================== SUPABASE SAVE/LOAD ======================
 async function saveCurrentData() {
     if (!isAdmin || !currentDateKey) return;
@@ -355,7 +374,7 @@ function handleImport(e) {
                 }
             });
 
-            saveCurrentData();
+           saveCurrentData = () => {};
             renderTable();
 
             let msg = `Import hoàn tất: cập nhật ${updated} dòng.\n`;
@@ -399,3 +418,4 @@ window.onload = async function() {
 </script>
 </body>
 </html>
+
