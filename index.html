@@ -334,26 +334,55 @@ function exportToExcel() {
     XLSX.writeFile(wb, `BaoCao_NSNN_ThaiNguyen_${currentDateKey || "latest"}.xlsx`);
 }
 
-// ====================== LƯU THỦ CÔNG ======================
+// ====================== LƯU (ghi đè nếu cùng ngày, tạo mới nếu ngày khác) ======================
 async function saveToSupabase() {
     if (!isAdmin || !currentDateKey) return alert("Chưa đăng nhập Admin hoặc chưa chọn ngày!");
 
-    const { error } = await supabaseClient
-        .from('reports')
-        .upsert({
-            date_key: currentDateKey,
-            data_json: treeData,
-            updated_at: new Date().toISOString()
-        }, { onConflict: 'date_key' });
+    console.log("Đang lưu dữ liệu cho ngày:", currentDateKey);
 
-    if (error) {
-        alert("Lưu thất bại: " + error.message);
-        console.error("Lỗi lưu:", error);
+    // Kiểm tra xem ngày này đã tồn tại chưa
+    const { data: existing } = await supabaseClient
+        .from('reports')
+        .select('date_key')
+        .eq('date_key', currentDateKey)
+        .single();
+
+    if (existing) {
+        // Ngày đã tồn tại → ghi đè (update)
+        const { error } = await supabaseClient
+            .from('reports')
+            .update({
+                data_json: treeData,
+                updated_at: new Date().toISOString()
+            })
+            .eq('date_key', currentDateKey);
+
+        if (error) {
+            alert("Cập nhật thất bại: " + error.message);
+            console.error("Lỗi update:", error);
+        } else {
+            alert(`✅ Đã ghi đè cập nhật dữ liệu ngày ${formatDateVN(currentDateKey)}!`);
+        }
     } else {
-        alert(`✅ Đã lưu thành công dữ liệu ngày ${formatDateVN(currentDateKey)}!`);
+        // Ngày mới → tạo dòng mới
+        const { error } = await supabaseClient
+            .from('reports')
+            .insert({
+                date_key: currentDateKey,
+                data_json: treeData,
+                updated_at: new Date().toISOString()
+            });
+
+        if (error) {
+            alert("Lưu thất bại: " + error.message);
+            console.error("Lỗi insert:", error);
+        } else {
+            alert(`✅ Đã lưu dữ liệu mới ngày ${formatDateVN(currentDateKey)} vào Supabase!`);
+            // Reload dropdown để hiển thị ngày mới
+            await loadHistoryDates();
+        }
     }
 }
-
 // ====================== LOAD & RENDER ======================
 async function loadDataByDate(dateKey) {
     if (!dateKey) dateKey = getYesterdayKey();
