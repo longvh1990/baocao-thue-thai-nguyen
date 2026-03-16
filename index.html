@@ -131,8 +131,22 @@ function resetTreeData() {
 }
 
 // ====================== NGÀY & ĐỊNH DẠNG ======================
-function getYesterdayKey() { const d = new Date(); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10); }
-function formatDateVN(key) { if(!key) return ""; const [y,m,d]=key.split('-'); return `${d}/${m}/${y}`; }
+function getTodayKey() {
+    const d = new Date();
+    return d.toISOString().slice(0,10);
+}
+
+function getYesterdayKey() {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0,10);
+}
+
+function formatDateVN(key) {
+    if (!key) return "";
+    const [y, m, d] = key.split('-');
+    return `${d}/${m}/${y}`;
+}
 
 // ====================== ADMIN AUTH ======================
 async function loginAdmin() {
@@ -145,7 +159,7 @@ async function loginAdmin() {
 
     if (error) {
         alert("Đăng nhập thất bại: " + error.message);
-        console.error("Lỗi đăng nhập:", error);
+        console.error(error);
         return;
     }
 
@@ -171,7 +185,111 @@ async function checkAdminSession() {
         enableEditMode();
     }
 }
-    // ====================== RENDER ======================
+
+// ====================== ENABLE/DISABLE EDIT ======================
+function enableEditMode() {
+    document.querySelectorAll(".contenteditable").forEach(td => td.contentEditable = true);
+    document.getElementById("btnImport").disabled = false;
+}
+
+function disableEditMode() {
+    document.querySelectorAll(".contenteditable").forEach(td => td.contentEditable = false);
+    document.getElementById("btnImport").disabled = true;
+}
+
+// ====================== LƯU THỦ CÔNG (luôn tạo dòng mới) ======================
+async function saveToSupabase() {
+    if (!isAdmin) return alert("Chưa đăng nhập Admin!");
+
+    // Luôn dùng ngày hiện tại làm key mới (không ghi đè ngày cũ)
+    const newDateKey = getTodayKey();
+    currentDateKey = newDateKey;
+
+    console.log("Đang lưu dữ liệu mới với ngày:", newDateKey);
+
+    const { error } = await supabaseClient
+        .from('reports')
+        .insert({
+            date_key: newDateKey,
+            data_json: treeData,
+            updated_at: new Date().toISOString()
+        });
+
+    if (error) {
+        alert("Lưu thất bại: " + error.message);
+        console.error("Lỗi lưu:", error);
+    } else {
+        alert(`✅ Đã lưu dữ liệu mới ngày ${formatDateVN(newDateKey)} vào Supabase!`);
+        // Reload lịch sử để dropdown cập nhật ngày mới
+        await loadHistoryDates();
+    }
+}
+
+// ====================== LOAD & RENDER ======================
+async function loadDataByDate(dateKey) {
+    if (!dateKey) dateKey = getYesterdayKey(); // fallback nếu không có
+    currentDateKey = dateKey;
+
+    console.log("Đang load dữ liệu ngày:", dateKey);
+
+    const { data, error } = await supabaseClient
+        .from('reports')
+        .select('data_json')
+        .eq('date_key', dateKey)
+        .maybeSingle();
+
+    if (error) {
+        console.error("Lỗi load:", error);
+    }
+
+    if (data?.data_json) {
+        treeData = data.data_json;
+        console.log("Load thành công từ Supabase");
+    } else {
+        resetTreeData();
+        console.log("Không có dữ liệu → dùng mẫu");
+    }
+
+    document.getElementById("report-date").textContent = formatDateVN(dateKey);
+    renderTable();
+}
+
+async function loadHistoryDates() {
+    const { data, error } = await supabaseClient
+        .from('reports')
+        .select('date_key')
+        .order('date_key', { ascending: false });
+
+    const sel = document.getElementById("historyDate");
+    sel.innerHTML = "";
+
+    if (error || !data || data.length === 0) {
+        console.log("Không có lịch sử → dùng ngày mẫu");
+        const defDate = getYesterdayKey();
+        const opt = document.createElement("option");
+        opt.value = defDate;
+        opt.text = `Tính đến ngày ${formatDateVN(defDate)} (mẫu)`;
+        opt.selected = true;
+        sel.appendChild(opt);
+        loadDataByDate(defDate);
+        return;
+    }
+
+    data.forEach(row => {
+        const opt = document.createElement("option");
+        opt.value = row.date_key;
+        opt.text = `Tính đến ngày ${formatDateVN(row.date_key)}`;
+        sel.appendChild(opt);
+    });
+
+    // Mặc định chọn ngày mới nhất
+    if (data.length > 0) {
+        sel.value = data[0].date_key;
+        loadDataByDate(data[0].date_key);
+    }
+}
+
+   // ====================== RENDER ======================
 function renderTable() {
     const tbody = document.querySelector("#dataTable tbody");
     tbody.innerHTML = "";
@@ -233,116 +351,6 @@ function createCell(val, field, node) {
     }
     return td;
 }
-
-// ====================== LỊCH SỬ DỮ LIỆU ======================
-async function saveCurrentData() {
-    if (!isAdmin) return alert("Chỉ admin mới lưu được!");
-
-    const { error } = await supabaseClient
-        .from('reports')
-        .upsert({
-            date_key: currentDateKey,
-            data_json: treeData,  // toàn bộ array/object treeData
-            updated_at: new Date().toISOString()
-        }, { onConflict: 'date_key' });
-
-    if (error) {
-        alert("Lỗi lưu: " + error.message);
-    } else {
-        alert(`Đã lưu dữ liệu ngày ${formatDateVN(currentDateKey)}!`);
-    }
-}
-
-async function loadDataByDate(dateKey) {
-    if (!dateKey) dateKey = getYesterdayKey(); // fallback
-
-    currentDateKey = dateKey;
-
-    const { data, error } = await supabaseClient
-        .from('reports')
-        .select('data_json')
-        .eq('date_key', dateKey)
-        .maybeSingle();  // single hoặc null nếu chưa có
-
-    if (error) {
-        console.error("Lỗi load từ Supabase:", error);
-    }
-
-    if (data && data.data_json) {
-        treeData = data.data_json;
-    } else {
-        resetTreeData(); // fallback dữ liệu mẫu
-    }
-
-    document.getElementById("report-date").textContent = formatDateVN(dateKey);
-    renderTable();
-}
-
-function loadHistoryDates() {
-    const dates = [];
-    for (let i=0; i<localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k.startsWith("baocao_thainguyen_")) dates.push(k.replace("baocao_thainguyen_",""));
-    }
-    dates.sort().reverse();
-
-    const sel = document.getElementById("historyDate");
-    sel.innerHTML = "";
-
-    if (dates.length === 0) {
-        const defDate = getYesterdayKey();
-        const opt = document.createElement("option");
-        opt.value = defDate;
-        opt.text = `Tính đến ngày ${formatDateVN(defDate)}`;
-        opt.selected = true;
-        sel.appendChild(opt);
-        loadDataByDate(defDate);
-    } else {
-        dates.forEach(d => {
-            const opt = document.createElement("option");
-            opt.value = d;
-            opt.text = `Tính đến ngày ${formatDateVN(d)}`;
-            sel.appendChild(opt);
-        });
-        const latest = dates[0];
-        sel.value = latest;
-        loadDataByDate(latest);
-    }
-}
-
-// ====================== ENABLE/DISABLE EDIT ======================
-function enableEditMode() {
-    document.querySelectorAll(".contenteditable").forEach(td => td.contentEditable = true);
-    document.getElementById("btnImport").disabled = false;
-}
-
-function disableEditMode() {
-    document.querySelectorAll(".contenteditable").forEach(td => td.contentEditable = false);
-    document.getElementById("btnImport").disabled = true;
-}
-
-// ====================== LƯU THỦ CÔNG ======================
-async function saveToSupabase() {
-    if (!isAdmin || !currentDateKey) return alert("Chưa đăng nhập Admin hoặc chưa chọn ngày!");
-
-    console.log("Đang lưu dữ liệu cho ngày:", currentDateKey);
-
-    const { error } = await supabaseClient
-        .from('reports')
-        .upsert({
-            date_key: currentDateKey,
-            data_json: treeData,
-            updated_at: new Date().toISOString()
-        }, { onConflict: 'date_key' });
-
-    if (error) {
-        alert("Lưu thất bại: " + error.message);
-        console.error("Lỗi lưu:", error);
-    } else {
-        alert(`✅ Đã lưu thành công dữ liệu ngày ${formatDateVN(currentDateKey)}!`);
-    }
-}
-
 // ====================== IMPORT ======================
 function handleImport(e) {
     if (!isAdmin) return alert("Chỉ Admin mới được import!");
@@ -403,7 +411,7 @@ function handleImport(e) {
 // ====================== KHỞI ĐỘNG ======================
 window.onload = async function() {
     await checkAdminSession();
-    await loadHistoryDates();
+    await loadHistoryDates(); // tự động load ngày mới nhất
     renderTable();
 };
 </script>
