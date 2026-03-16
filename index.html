@@ -85,8 +85,8 @@
     <div class="note">
         <strong>Hướng dẫn sử dụng:</strong><br>
         • Chỉnh sửa hoặc Import → thay đổi tạm thời trên bảng.<br>
-        • Nhấn <strong>💾 Lưu lại</strong> để lưu vĩnh viễn vào Supabase.<br>
-        • Reload trang sẽ lấy dữ liệu mới nhất từ Supabase.
+        • Nhấn <strong>💾 Lưu lại</strong> để tạo dòng mới trên Supabase (không ghi đè ngày cũ).<br>
+        • Trang tự động hiển thị dữ liệu ngày mới nhất. Chọn ngày cũ trong dropdown để xem lại.
     </div>
 </div>
 
@@ -94,8 +94,6 @@
 // ====================== CẤU HÌNH SUPABASE ======================
 const SUPABASE_URL = 'https://bsyqklmoorafermypoyj.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJzeXFrbG1vb3JhZmVybXlwb3lqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNzQ1NzMsImV4cCI6MjA4ODg1MDU3M30.wm6P171WQnaIMKB1FJEh1OPeDc75cI3VHuk-ASDRooo';
-
-// Sửa lỗi: dùng tên biến khác để tránh trùng lặp
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let isAdmin = false;
@@ -197,12 +195,11 @@ function disableEditMode() {
     document.getElementById("btnImport").disabled = true;
 }
 
-// ====================== LƯU THỦ CÔNG (luôn tạo dòng mới) ======================
+// ====================== LƯU (tạo dòng mới) ======================
 async function saveToSupabase() {
     if (!isAdmin) return alert("Chưa đăng nhập Admin!");
 
-    // Luôn dùng ngày hiện tại làm key mới (không ghi đè ngày cũ)
-    const newDateKey = getTodayKey();
+    const newDateKey = getTodayKey(); // luôn dùng ngày hiện tại cho dữ liệu mới
     currentDateKey = newDateKey;
 
     console.log("Đang lưu dữ liệu mới với ngày:", newDateKey);
@@ -220,17 +217,17 @@ async function saveToSupabase() {
         console.error("Lỗi lưu:", error);
     } else {
         alert(`✅ Đã lưu dữ liệu mới ngày ${formatDateVN(newDateKey)} vào Supabase!`);
-        // Reload lịch sử để dropdown cập nhật ngày mới
+        // Reload dropdown để hiển thị ngày mới
         await loadHistoryDates();
     }
 }
 
 // ====================== LOAD & RENDER ======================
 async function loadDataByDate(dateKey) {
-    if (!dateKey) dateKey = getYesterdayKey(); // fallback nếu không có
+    if (!dateKey) dateKey = getYesterdayKey();
     currentDateKey = dateKey;
 
-    console.log("Đang load dữ liệu ngày:", dateKey);
+    console.log("Đang load ngày:", dateKey);
 
     const { data, error } = await supabaseClient
         .from('reports')
@@ -238,16 +235,12 @@ async function loadDataByDate(dateKey) {
         .eq('date_key', dateKey)
         .maybeSingle();
 
-    if (error) {
-        console.error("Lỗi load:", error);
-    }
+    if (error) console.error("Lỗi load:", error);
 
     if (data?.data_json) {
         treeData = data.data_json;
-        console.log("Load thành công từ Supabase");
     } else {
         resetTreeData();
-        console.log("Không có dữ liệu → dùng mẫu");
     }
 
     document.getElementById("report-date").textContent = formatDateVN(dateKey);
@@ -264,7 +257,6 @@ async function loadHistoryDates() {
     sel.innerHTML = "";
 
     if (error || !data || data.length === 0) {
-        console.log("Không có lịch sử → dùng ngày mẫu");
         const defDate = getYesterdayKey();
         const opt = document.createElement("option");
         opt.value = defDate;
@@ -289,7 +281,7 @@ async function loadHistoryDates() {
     }
 }
 
-   // ====================== RENDER ======================
+// ====================== RENDER TABLE ======================
 function renderTable() {
     const tbody = document.querySelector("#dataTable tbody");
     tbody.innerHTML = "";
@@ -343,14 +335,12 @@ function createCell(val, field, node) {
         td.onblur = function() {
             let raw = this.textContent.replace(/[^0-9.-]/g, "");
             node[field] = parseFloat(raw) || 0;
-            if (field === "actual") {
-                updateParentTotals(); 
-            }
             renderTable();
         };
     }
     return td;
 }
+
 // ====================== IMPORT ======================
 function handleImport(e) {
     if (!isAdmin) return alert("Chỉ Admin mới được import!");
@@ -399,13 +389,34 @@ function handleImport(e) {
             if (notFound.length > 0) {
                 msg += `Không tìm thấy:\n` + notFound.slice(0,10).join("\n") + (notFound.length>10 ? "\n...và " + (notFound.length-10) + " dòng khác" : "");
             }
-            msg += "\nNhấn nút 💾 Lưu lại để lưu vĩnh viễn.";
+            msg += "\nNhấn nút 💾 Lưu lại để lưu thành dòng mới trên Supabase.";
             alert(msg);
         } catch(err) {
             alert("Lỗi đọc file Excel: " + err.message);
         }
     };
     reader.readAsArrayBuffer(file);
+}
+
+// ====================== EXPORT ======================
+function exportToExcel() {
+    const rows = [["TT","Chỉ tiêu","Dự toán CP","Dự toán tỉnh","Thực hiện","% CP","% tỉnh"]];
+    function addRow(node, depth=0) {
+        rows.push([
+            node.tt || "",
+            "  ".repeat(depth) + node.chi_tieu,
+            node.govt,
+            node.prov,
+            node.actual,
+            node.govt ? (node.actual/node.govt*100).toFixed(1)+"%" : "—",
+            node.prov ? (node.actual/node.prov*100).toFixed(1)+"%" : "—"
+        ]);
+        if (node.expanded) treeData.filter(r=>r.parent===node.id).forEach(c=>addRow(c,depth+1));
+    }
+    treeData.filter(r=>!r.parent).forEach(n=>addRow(n));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "BaoCao");
+    XLSX.writeFile(wb, `BaoCao_NSNN_ThaiNguyen_${currentDateKey || "latest"}.xlsx`);
 }
 
 // ====================== KHỞI ĐỘNG ======================
@@ -417,6 +428,3 @@ window.onload = async function() {
 </script>
 </body>
 </html>
-
-
-
