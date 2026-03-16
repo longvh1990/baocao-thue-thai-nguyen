@@ -280,7 +280,23 @@ async function loadHistoryDates() {
         loadDataByDate(data[0].date_key);
     }
 }
-
+// ====================== TÍNH TỔNG TỰ ĐỘNG SAU KHI SỬA ======================
+function updateParentTotals() {
+    // Duyệt từ cấp thấp nhất lên cao nhất
+    for (let lvl = 3; lvl >= 0; lvl--) {
+        treeData.forEach(node => {
+            if (node.level === lvl) {
+                const children = treeData.filter(r => r.parent === node.id);
+                if (children.length > 0) {
+                    // Tính tổng actual từ tất cả con
+                    node.actual = children.reduce((sum, child) => sum + (child.actual || 0), 0);
+                }
+            }
+        });
+    }
+    renderTable(); // cập nhật giao diện ngay lập tức
+}
+    
 // ====================== RENDER TABLE ======================
 function renderTable() {
     const tbody = document.querySelector("#dataTable tbody");
@@ -335,6 +351,9 @@ function createCell(val, field, node) {
         td.onblur = function() {
             let raw = this.textContent.replace(/[^0-9.-]/g, "");
             node[field] = parseFloat(raw) || 0;
+            if (field === "actual") {
+                updateParentTotals();  // TỰ ĐỘNG TÍNH TỔNG CHA
+            }
             renderTable();
         };
     }
@@ -382,7 +401,7 @@ function handleImport(e) {
                     notFound.push(name);
                 }
             });
-
+            updateParentTotals();
             renderTable();
 
             let msg = `Import thành công: cập nhật ${updated} dòng.\n`;
