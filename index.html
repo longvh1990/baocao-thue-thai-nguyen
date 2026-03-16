@@ -129,44 +129,26 @@ function resetTreeData() {
 }
 
 // ====================== NGÀY & ĐỊNH DẠNG ======================
-function getTodayKey() {
-    const d = new Date();
-    return d.toISOString().slice(0,10);
-}
-
-function getYesterdayKey() {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return d.toISOString().slice(0,10);
-}
-
-function formatDateVN(key) {
-    if (!key) return "";
-    const [y, m, d] = key.split('-');
-    return `${d}/${m}/${y}`;
-}
+function getTodayKey() { const d = new Date(); return d.toISOString().slice(0,10); }
+function getYesterdayKey() { const d = new Date(); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10); }
+function formatDateVN(key) { if(!key) return ""; const [y,m,d]=key.split('-'); return `${d}/${m}/${y}`; }
 
 // ====================== ADMIN AUTH ======================
 async function loginAdmin() {
     const email = document.getElementById("adminEmail").value.trim();
     const password = document.getElementById("adminPass").value.trim();
-
     if (!email || !password) return alert("Vui lòng nhập email và mật khẩu!");
-
     const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-
     if (error) {
         alert("Đăng nhập thất bại: " + error.message);
         console.error(error);
         return;
     }
-
     isAdmin = true;
     document.getElementById("adminStatus").innerHTML = `<span style="color:#15803d;">✓ Admin: ${data.user.email}</span>`;
     enableEditMode();
     alert("Đăng nhập thành công!");
 }
-
 async function logoutAdmin() {
     await supabaseClient.auth.signOut();
     isAdmin = false;
@@ -174,7 +156,6 @@ async function logoutAdmin() {
     disableEditMode();
     alert("Đã thoát chế độ Admin.");
 }
-
 async function checkAdminSession() {
     const { data: { session } } = await supabaseClient.auth.getSession();
     if (session) {
@@ -183,42 +164,193 @@ async function checkAdminSession() {
         enableEditMode();
     }
 }
-
 // ====================== ENABLE/DISABLE EDIT ======================
 function enableEditMode() {
     document.querySelectorAll(".contenteditable").forEach(td => td.contentEditable = true);
     document.getElementById("btnImport").disabled = false;
 }
-
 function disableEditMode() {
     document.querySelectorAll(".contenteditable").forEach(td => td.contentEditable = false);
     document.getElementById("btnImport").disabled = true;
 }
+// ====================== TÍNH TỔNG TỰ ĐỘNG SAU KHI SỬA ======================
+function updateParentTotals() {
+    // Duyệt từ cấp thấp nhất (3) lên cao nhất (0)
+    for (let lvl = 3; lvl >= 0; lvl--) {
+        treeData.forEach(node => {
+            if (node.level === lvl) {
+                const children = treeData.filter(r => r.parent === node.id);
+                if (children.length > 0) {
+                    // Tính tổng actual từ tất cả con trực tiếp
+                    node.actual = children.reduce((sum, child) => sum + (child.actual || 0), 0);
+                }
+            }
+        });
+    }
+    renderTable(); // render lại toàn bộ để cập nhật cả % CP và % tỉnh
+}
 
-// ====================== LƯU (tạo dòng mới) ======================
+// ====================== CREATE CELL ======================
+function createCell(val, field, node) {
+    const td = document.createElement("td");
+    td.textContent = val.toLocaleString("vi-VN");
+    td.className = "contenteditable";
+
+    if (isAdmin) {
+        td.contentEditable = true;
+        td.onblur = function() {
+            let raw = this.textContent.replace(/[^0-9.-]/g, "");
+            node[field] = parseFloat(raw) || 0;
+            if (field === "actual") {
+                updateParentTotals(); // TỰ ĐỘNG TÍNH TỔNG VÀ % CỦA CHA
+            }
+            renderTable();
+        };
+    }
+    return td;
+}
+
+// ====================== RENDER TABLE ======================
+function renderTable() {
+    const tbody = document.querySelector("#dataTable tbody");
+    tbody.innerHTML = "";
+    treeData.filter(r => !r.parent).forEach(node => renderNode(node, tbody, 0));
+}
+
+function renderNode(node, tbody, depth) {
+    const tr = document.createElement("tr");
+    tr.className = `level-${node.level}`;
+
+    const tdTT = document.createElement("td"); tdTT.textContent = node.tt || ""; tr.appendChild(tdTT);
+
+    const tdChi = document.createElement("td");
+    tdChi.style.paddingLeft = `${depth*30 + 15}px`;
+    const hasChild = treeData.some(r => r.parent === node.id);
+    if (hasChild) {
+        tdChi.innerHTML = `<strong>${node.chi_tieu}</strong> ${node.expanded ? '▼' : '▶'}`;
+        tdChi.style.cursor = "pointer";
+        tdChi.onclick = () => { node.expanded = !node.expanded; renderTable(); };
+    } else {
+        tdChi.textContent = node.chi_tieu;
+    }
+    tr.appendChild(tdChi);
+
+    tr.appendChild(createCell(node.govt, "govt", node));
+    tr.appendChild(createCell(node.prov, "prov", node));
+    tr.appendChild(createCell(node.actual, "actual", node));
+
+    const tdCP = document.createElement("td"); tdCP.className="percent";
+    tdCP.textContent = node.govt ? (node.actual / node.govt * 100).toFixed(1) + "%" : "—";
+    tr.appendChild(tdCP);
+
+    const tdProv = document.createElement("td"); tdProv.className="percent";
+    tdProv.textContent = node.prov ? (node.actual / node.prov * 100).toFixed(1) + "%" : "—";
+    tr.appendChild(tdProv);
+
+    tbody.appendChild(tr);
+
+    if (node.expanded) {
+        treeData.filter(r => r.parent === node.id).forEach(c => renderNode(c, tbody, depth+1));
+    }
+}
+
+// ====================== IMPORT ======================
+function handleImport(e) {
+    if (!isAdmin) return alert("Chỉ Admin mới được import!");
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+        try {
+            const data = new Uint8Array(ev.target.result);
+            const wb = XLSX.read(data, {type:"array"});
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const json = XLSX.utils.sheet_to_json(ws, {header:1, defval:""});
+
+            let updated = 0;
+            let notFound = [];
+
+            json.forEach((row, idx) => {
+                if (idx < 5) return;
+                if (!row[1]) return;
+
+                let name = (row[1] || "").toString().trim().replace(/\s+/g, " ");
+                if (!name) return;
+
+                const match = treeData.find(r => {
+                    let cleanChi = r.chi_tieu.trim().replace(/\s+/g, " ");
+                    return cleanChi === name ||
+                           cleanChi.includes(name) ||
+                           name.includes(cleanChi) ||
+                           (name.startsWith("- ") && cleanChi.startsWith("- ") && name.slice(2).trim() === cleanChi.slice(2).trim());
+                });
+
+                if (match) {
+                    match.govt   = parseFloat((row[2]||"").toString().replace(/[^0-9.-]/g,"")) || 0;
+                    match.prov   = parseFloat((row[3]||"").toString().replace(/[^0-9.-]/g,"")) || 0;
+                    match.actual = parseFloat((row[4]||"").toString().replace(/[^0-9.-]/g,"")) || 0;
+                    updated++;
+                } else {
+                    notFound.push(name);
+                }
+            });
+
+            updateParentTotals(); // TÍNH TỔNG SAU IMPORT
+
+            renderTable();
+
+            let msg = `Import thành công: cập nhật ${updated} dòng.\n`;
+            if (notFound.length > 0) {
+                msg += `Không tìm thấy:\n` + notFound.slice(0,10).join("\n") + (notFound.length>10 ? "\n...và " + (notFound.length-10) + " dòng khác" : "");
+            }
+            msg += "\nNhấn nút 💾 Lưu lại để lưu vĩnh viễn vào Supabase.";
+            alert(msg);
+        } catch(err) {
+            alert("Lỗi đọc file Excel: " + err.message);
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+// ====================== EXPORT ======================
+function exportToExcel() {
+    const rows = [["TT","Chỉ tiêu","Dự toán CP","Dự toán tỉnh","Thực hiện","% CP","% tỉnh"]];
+    function addRow(node, depth=0) {
+        rows.push([
+            node.tt || "",
+            "  ".repeat(depth) + node.chi_tieu,
+            node.govt,
+            node.prov,
+            node.actual,
+            node.govt ? (node.actual/node.govt*100).toFixed(1)+"%" : "—",
+            node.prov ? (node.actual/node.prov*100).toFixed(1)+"%" : "—"
+        ]);
+        if (node.expanded) treeData.filter(r=>r.parent===node.id).forEach(c=>addRow(c,depth+1));
+    }
+    treeData.filter(r=>!r.parent).forEach(n=>addRow(n));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "BaoCao");
+    XLSX.writeFile(wb, `BaoCao_NSNN_ThaiNguyen_${currentDateKey || "latest"}.xlsx`);
+}
+
+// ====================== LƯU THỦ CÔNG ======================
 async function saveToSupabase() {
-    if (!isAdmin) return alert("Chưa đăng nhập Admin!");
-
-    const newDateKey = getTodayKey(); // luôn dùng ngày hiện tại cho dữ liệu mới
-    currentDateKey = newDateKey;
-
-    console.log("Đang lưu dữ liệu mới với ngày:", newDateKey);
+    if (!isAdmin || !currentDateKey) return alert("Chưa đăng nhập Admin hoặc chưa chọn ngày!");
 
     const { error } = await supabaseClient
         .from('reports')
-        .insert({
-            date_key: newDateKey,
+        .upsert({
+            date_key: currentDateKey,
             data_json: treeData,
             updated_at: new Date().toISOString()
-        });
+        }, { onConflict: 'date_key' });
 
     if (error) {
         alert("Lưu thất bại: " + error.message);
         console.error("Lỗi lưu:", error);
     } else {
-        alert(`✅ Đã lưu dữ liệu mới ngày ${formatDateVN(newDateKey)} vào Supabase!`);
-        // Reload dropdown để hiển thị ngày mới
-        await loadHistoryDates();
+        alert(`✅ Đã lưu thành công dữ liệu ngày ${formatDateVN(currentDateKey)}!`);
     }
 }
 
@@ -226,8 +358,6 @@ async function saveToSupabase() {
 async function loadDataByDate(dateKey) {
     if (!dateKey) dateKey = getYesterdayKey();
     currentDateKey = dateKey;
-
-    console.log("Đang load ngày:", dateKey);
 
     const { data, error } = await supabaseClient
         .from('reports')
@@ -274,174 +404,16 @@ async function loadHistoryDates() {
         sel.appendChild(opt);
     });
 
-    // Mặc định chọn ngày mới nhất
     if (data.length > 0) {
         sel.value = data[0].date_key;
         loadDataByDate(data[0].date_key);
     }
 }
-// ====================== TÍNH TỔNG TỰ ĐỘNG SAU KHI SỬA ======================
-function updateParentTotals() {
-    // Duyệt từ cấp thấp nhất lên cao nhất
-    for (let lvl = 3; lvl >= 0; lvl--) {
-        treeData.forEach(node => {
-            if (node.level === lvl) {
-                const children = treeData.filter(r => r.parent === node.id);
-                if (children.length > 0) {
-                    // Tính tổng actual từ tất cả con
-                    node.actual = children.reduce((sum, child) => sum + (child.actual || 0), 0);
-                }
-            }
-        });
-    }
-    renderTable(); // cập nhật giao diện ngay lập tức
-}
-    
-// ====================== RENDER TABLE ======================
-function renderTable() {
-    const tbody = document.querySelector("#dataTable tbody");
-    tbody.innerHTML = "";
-    treeData.filter(r => !r.parent).forEach(node => renderNode(node, tbody, 0));
-}
-
-function renderNode(node, tbody, depth) {
-    const tr = document.createElement("tr");
-    tr.className = `level-${node.level}`;
-
-    const tdTT = document.createElement("td"); tdTT.textContent = node.tt || ""; tr.appendChild(tdTT);
-
-    const tdChi = document.createElement("td");
-    tdChi.style.paddingLeft = `${depth*30 + 15}px`;
-    const hasChild = treeData.some(r => r.parent === node.id);
-    if (hasChild) {
-        tdChi.innerHTML = `<strong>${node.chi_tieu}</strong> ${node.expanded ? '▼' : '▶'}`;
-        tdChi.style.cursor = "pointer";
-        tdChi.onclick = () => { node.expanded = !node.expanded; renderTable(); };
-    } else {
-        tdChi.textContent = node.chi_tieu;
-    }
-    tr.appendChild(tdChi);
-
-    tr.appendChild(createCell(node.govt, "govt", node));
-    tr.appendChild(createCell(node.prov, "prov", node));
-    tr.appendChild(createCell(node.actual, "actual", node));
-
-    const tdCP = document.createElement("td"); tdCP.className="percent";
-    tdCP.textContent = node.govt ? (node.actual / node.govt * 100).toFixed(1) + "%" : "—";
-    tr.appendChild(tdCP);
-
-    const tdProv = document.createElement("td"); tdProv.className="percent";
-    tdProv.textContent = node.prov ? (node.actual / node.prov * 100).toFixed(1) + "%" : "—";
-    tr.appendChild(tdProv);
-
-    tbody.appendChild(tr);
-
-    if (node.expanded) {
-        treeData.filter(r => r.parent === node.id).forEach(c => renderNode(c, tbody, depth+1));
-    }
-}
-
-function createCell(val, field, node) {
-    const td = document.createElement("td");
-    td.textContent = val.toLocaleString("vi-VN");
-    td.className = "contenteditable";
-
-    if (isAdmin) {
-        td.contentEditable = true;
-        td.onblur = function() {
-            let raw = this.textContent.replace(/[^0-9.-]/g, "");
-            node[field] = parseFloat(raw) || 0;
-            if (field === "actual") {
-                updateParentTotals();  // TỰ ĐỘNG TÍNH TỔNG CHA
-            }
-            renderTable();
-        };
-    }
-    return td;
-}
-
-// ====================== IMPORT ======================
-function handleImport(e) {
-    if (!isAdmin) return alert("Chỉ Admin mới được import!");
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = function(ev) {
-        try {
-            const data = new Uint8Array(ev.target.result);
-            const wb = XLSX.read(data, {type:"array"});
-            const ws = wb.Sheets[wb.SheetNames[0]];
-            const json = XLSX.utils.sheet_to_json(ws, {header:1, defval:""});
-
-            let updated = 0;
-            let notFound = [];
-
-            json.forEach((row, idx) => {
-                if (idx < 5) return;
-                if (!row[1]) return;
-
-                let name = (row[1] || "").toString().trim().replace(/\s+/g, " ");
-                if (!name) return;
-
-                const match = treeData.find(r => {
-                    let cleanChi = r.chi_tieu.trim().replace(/\s+/g, " ");
-                    return cleanChi === name ||
-                           cleanChi.includes(name) ||
-                           name.includes(cleanChi) ||
-                           (name.startsWith("- ") && cleanChi.startsWith("- ") && name.slice(2).trim() === cleanChi.slice(2).trim());
-                });
-
-                if (match) {
-                    match.govt   = parseFloat((row[2]||"").toString().replace(/[^0-9.-]/g,"")) || 0;
-                    match.prov   = parseFloat((row[3]||"").toString().replace(/[^0-9.-]/g,"")) || 0;
-                    match.actual = parseFloat((row[4]||"").toString().replace(/[^0-9.-]/g,"")) || 0;
-                    updated++;
-                } else {
-                    notFound.push(name);
-                }
-            });
-            updateParentTotals();
-            renderTable();
-
-            let msg = `Import thành công: cập nhật ${updated} dòng.\n`;
-            if (notFound.length > 0) {
-                msg += `Không tìm thấy:\n` + notFound.slice(0,10).join("\n") + (notFound.length>10 ? "\n...và " + (notFound.length-10) + " dòng khác" : "");
-            }
-            msg += "\nNhấn nút 💾 Lưu lại để lưu thành dòng mới trên Supabase.";
-            alert(msg);
-        } catch(err) {
-            alert("Lỗi đọc file Excel: " + err.message);
-        }
-    };
-    reader.readAsArrayBuffer(file);
-}
-
-// ====================== EXPORT ======================
-function exportToExcel() {
-    const rows = [["TT","Chỉ tiêu","Dự toán CP","Dự toán tỉnh","Thực hiện","% CP","% tỉnh"]];
-    function addRow(node, depth=0) {
-        rows.push([
-            node.tt || "",
-            "  ".repeat(depth) + node.chi_tieu,
-            node.govt,
-            node.prov,
-            node.actual,
-            node.govt ? (node.actual/node.govt*100).toFixed(1)+"%" : "—",
-            node.prov ? (node.actual/node.prov*100).toFixed(1)+"%" : "—"
-        ]);
-        if (node.expanded) treeData.filter(r=>r.parent===node.id).forEach(c=>addRow(c,depth+1));
-    }
-    treeData.filter(r=>!r.parent).forEach(n=>addRow(n));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "BaoCao");
-    XLSX.writeFile(wb, `BaoCao_NSNN_ThaiNguyen_${currentDateKey || "latest"}.xlsx`);
-}
 
 // ====================== KHỞI ĐỘNG ======================
 window.onload = async function() {
     await checkAdminSession();
-    await loadHistoryDates(); // tự động load ngày mới nhất
+    await loadHistoryDates();
     renderTable();
 };
 </script>
